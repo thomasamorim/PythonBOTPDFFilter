@@ -1,0 +1,133 @@
+import PyPDF2
+import re
+import os
+import openpyxl
+
+def extrair_texto(pdf_path):
+    texto_completo = ""
+
+    with open(pdf_path, "rb") as arquivo_pdf:
+        leitor_pdf = PyPDF2.PdfReader(arquivo_pdf)
+        num_paginas = len(leitor_pdf.pages)
+
+        for pagina_num in range(num_paginas):
+            pagina = leitor_pdf.pages[pagina_num]
+            texto_pagina = pagina.extract_text()
+            texto_completo += texto_pagina
+
+    return texto_completo
+
+def concentracao(texto):
+    padrao = r"medida na captação de água apresentou concentração de\s+(\d+,\d+)"
+    match = re.search(padrao, texto)
+    if match:
+        return match.group(1)
+    else:
+        return None
+    
+def laudos(texto):
+    inicio_laudo = texto.find("LAUDO")
+    inicio_laudo += len("LAUDO")
+    fim_laudo = texto.find("FONE/FAX")
+
+    if inicio_laudo != -1 and fim_laudo != -1:
+        informacao_laudo = texto[inicio_laudo:fim_laudo].strip()
+        return informacao_laudo
+    else:
+        return None
+
+def data_de_entrada(texto):
+    padrao_data = r"DATA DE ENTRADA\s*:\s*(\d{2}\s+de\s+[^\s]+\s+de\s+\d{4})"
+    match_data = re.search(padrao_data, texto)
+    if match_data:
+        data_entrada = match_data.group(1)
+    else:
+        data_entrada = None
+
+    return data_entrada
+
+def extrair_manancial(texto):
+    inicio_manancial = texto.find("MANANCIAL:")
+    inicio_manancial += len("MANANCIAL:")
+    fim_manancial = texto.find("Cidade:")
+
+    if inicio_manancial != -1 and fim_manancial != -1:
+        informacao_manancial = texto[inicio_manancial:fim_manancial].strip()
+        return informacao_manancial
+    else:
+        return None
+
+def fitoplan_total(texto):
+    index_fitoplancton = texto.find("Total fitoplâncton")
+    if index_fitoplancton == -1:
+        return None
+
+    index_cianobacterias = texto.find("TOTAL CIANOBACTÉRIAS")
+    if index_cianobacterias == -1:
+        return None
+
+    value = texto[index_fitoplancton + len("Total fitoplâncton"):index_cianobacterias].strip()
+    return value
+
+def ciano_total(texto):
+    padrao = r'TOTAL CIANOBACTÉRIAS\s+(\d+(?:\.\d+)?)'
+    resultado = re.search(padrao, texto)
+    return resultado.group(1) if resultado else 0
+        
+def coleta(texto):
+    padrao = r'\((.*?)\)\s+RESPONSÁVEL PELA COLETA :'
+    resultado = re.search(padrao, texto)
+    if resultado:
+        return resultado.group(1)
+    else:
+        return None
+    
+def cidade(texto):
+    inicio_cidade = texto.find("Cidade:")
+    inicio_cidade += len("Cidade:")
+    fim_cidade = texto.find("Nº de AMOSTRAS :")
+
+    if inicio_cidade != -1 and fim_cidade != -1:
+        informacao_cidade = texto[inicio_cidade:fim_cidade].strip()
+        return informacao_cidade
+    else:
+        return None
+
+laudos_lista = ['LAUDOS']
+clorofila_lista = ['Clorofila-a (μg/L)']
+data_lista = ['Data']
+cianos_lista = ['Ciano (cel/mL)']
+fitos_lista = ['Fitoplancton (cel/mL)']
+mananciais_lista = ['Manancial']
+coleta_lista = ['Coleta']
+cidade_lista = ['Cidade']
+
+pasta_caminho = "C:\Python\Cagepa\PDFs"
+for nome_arquivo in os.listdir(pasta_caminho):
+    if nome_arquivo.endswith('.pdf'):
+        caminho_arquivo = os.path.join(pasta_caminho, nome_arquivo)
+        texto = extrair_texto(caminho_arquivo)
+        laudos_lista.append(laudos(texto))
+        mananciais_lista.append(extrair_manancial(texto))
+        cidade_lista.append(cidade(texto))
+        data_lista.append(data_de_entrada(texto))
+        clorofila_lista.append(concentracao(texto))
+        cianos_lista.append(ciano_total(texto))
+        fitos_lista.append(fitoplan_total(texto))
+        coleta_lista.append(coleta(texto))
+        
+listas = [laudos_lista, clorofila_lista, mananciais_lista,cidade_lista, data_lista, clorofila_lista, cianos_lista, fitos_lista, coleta_lista]
+
+def printar_excel(filename, *lists):
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    for i,lst in enumerate(lists, start=1):
+        column = i
+        for j,item in enumerate(lst, start=1):
+            sheet.cell(row=j, column=column).value = item
+            
+    workbook.save(filename)
+    print(f'Arquivo excel "{filename}" criado com sucesso.')
+    
+arquivo_final = 'resultado.xlsx'
+printar_excel(arquivo_final, *listas)
