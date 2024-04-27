@@ -47,13 +47,12 @@ def data_de_entrada(texto):
     return data_entrada
 
 def extrair_manancial(texto):
-    inicio_manancial = texto.find("MANANCIAL:")
-    inicio_manancial += len("MANANCIAL:")
-    fim_manancial = texto.find("Cidade:")
-
-    if inicio_manancial != -1 and fim_manancial != -1:
-        informacao_manancial = texto[inicio_manancial:fim_manancial].strip()
-        return informacao_manancial
+    regex = re.compile(r'MANANCIAL:\s+(.*?)(?:\s+/\s+|\s+\\n|\s+Cidade:)', re.IGNORECASE | re.DOTALL)
+    match = regex.search(texto)
+    if match:
+        manancial_info = match.group(1).strip()
+        manancial_name = re.sub(r'\s+/.*$|\s+Cidade:$', '', manancial_info)
+        return manancial_name.strip()
     else:
         return None
 
