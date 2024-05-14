@@ -1,0 +1,190 @@
+import PyPDF2
+import re
+import os
+import openpyxl
+
+def extrair_texto(pdf_path):
+    texto_completo = ""
+
+    with open(pdf_path, "rb") as arquivo_pdf:
+        leitor_pdf = PyPDF2.PdfReader(arquivo_pdf)
+        num_paginas = len(leitor_pdf.pages)
+
+        for pagina_num in range(num_paginas):
+            pagina = leitor_pdf.pages[pagina_num]
+            texto_pagina = pagina.extract_text()
+            texto_completo += texto_pagina
+
+    return texto_completo
+
+def qtd_amostras(texto):
+    inicio_ams = texto.find("Nº de AMOSTRAS :")
+    inicio_ams += len("Nº de AMOSTRAS :")
+    fim_ams = texto.find("DATA DE ENTRADA :")
+
+    if inicio_ams != -1 and fim_ams != -1:
+        informacao_ams = texto[inicio_ams:fim_ams].strip()
+        return informacao_ams
+    else:
+        return None
+    
+def laudos(texto):
+    inicio_laudo = texto.find("LAUDO")
+    inicio_laudo += len("LAUDO")
+    fim_laudo = texto.find("FONE/FAX")
+
+    if inicio_laudo != -1 and fim_laudo != -1:
+        informacao_laudo = texto[inicio_laudo:fim_laudo].strip()
+        return informacao_laudo
+    else:
+        return None
+
+def data_de_entrada(texto):
+    padrao_data = r"DATA DE ENTRADA\s*:\s*(\d{2}\s+de\s+[^\s]+\s+de\s+\d{4})"
+    match_data = re.search(padrao_data, texto)
+    if match_data:
+        data_entrada = match_data.group(1)
+    else:
+        data_entrada = None
+
+    return data_entrada
+
+def extrair_manancial(texto):
+    regex = re.compile(r'MANANCIAL:\s+(.*?)(?:\s+/\s+|\s+\\n|\s+Cidade:)', re.IGNORECASE | re.DOTALL)
+    match = regex.search(texto)
+    if match:
+        manancial_info = match.group(1).strip()
+        manancial_name = re.sub(r'\s+/.*$|\s+Cidade:$', '', manancial_info)
+        return manancial_name.strip()
+    else:
+        return None
+
+def linha1(texto):
+    inicio_linha1 = texto.find("Microcistina")
+    inicio_linha1 += len("Microcistina")
+    fim_linha1 = texto.find("Saxitoxina")
+
+    if inicio_linha1 != -1 and fim_linha1 != -1:
+        informacao_linha1 = texto[inicio_linha1:fim_linha1].strip()
+        return informacao_linha1
+    else:
+        return None
+
+def linha2(texto):
+    inicio_linha2 = texto.find("Saxitoxina")
+    inicio_linha2 += len("Saxitoxina")
+    fim_linha2 = texto.find("DATA DE ENTRADA :")
+
+    if inicio_linha2 != -1 and fim_linha2 != -1:
+        informacao_linha2 = texto[inicio_linha2:fim_linha2].strip()
+        return informacao_linha2
+    else:
+        return None
+
+def linha3(texto):
+    inicio_linha3 = texto.find("Cilindrospermopsina")
+    inicio_linha3 += len("Cilindrospermopsina")
+    fim_linha3 = texto.find("*Valor máximo")
+
+    if inicio_linha3 != -1 and fim_linha3 != -1:
+        informacao_linha3 = texto[inicio_linha3:fim_linha3].strip()
+        return informacao_linha3
+    else:
+        return None
+
+def coleta(texto):
+    padrao = r'\((.*?)\)\s+RESPONSÁVEL PELA COLETA :'
+    resultado = re.search(padrao, texto)
+    if resultado:
+        return resultado.group(1)
+    else:
+        return None
+    
+def cidade(texto):
+    inicio_cidade = texto.find("Cidade:")
+    inicio_cidade2 = texto.find("Cidade :")
+    if inicio_cidade != -1:
+        inicio_cidade += len("Cidade:")
+        fim_cidade = texto.find("\nNº de AMOSTRAS", inicio_cidade)
+        if fim_cidade != -1:
+            informacao_cidade = texto[inicio_cidade:fim_cidade].strip()
+            return informacao_cidade
+    elif inicio_cidade2 != -1:
+        inicio_cidade2 += len("Cidade :")
+        fim_cidade = texto.find("\nNº de AMOSTRAS", inicio_cidade2)
+        if fim_cidade != -1:
+            informacao_cidade = texto[inicio_cidade2:fim_cidade].strip()
+            return informacao_cidade
+    return None
+
+def extrair_toxinas(texto, lista):
+    padrao = r"\bToxinas\s+(.*?)\s*VMP\*"
+    correspondencias = re.search(padrao, texto, re.DOTALL)
+    if correspondencias:
+        matches_eta = re.findall(r'\bETA\s+\d+', correspondencias.group(1))
+        lista.extend(matches_eta)
+    
+        matches_eta_com_nome = re.findall(r'\bETA\s+\((.*?)\)', correspondencias.group(1))
+        matches_eta_com_nome = ['ETA (' + match.strip() + ')' for match in matches_eta_com_nome]
+        
+    if matches_eta_com_nome:
+        lista.extend(['CAP'])
+        lista.extend(matches_eta_com_nome)
+
+    # Se os dois primeiros padrões não adicionarem nada à lista, adicione qualquer palavra entre "Toxinas" e "VMP*"
+    if not matches_eta and not matches_eta_com_nome:
+        matches_gerais = re.findall(r'\b\w+\b', correspondencias.group(1))
+        lista.extend(matches_gerais)
+
+def inserindo(lista,item,n):
+    for i in range(n):
+        lista.append(item)
+        
+def inserindo_con(lista,item,n):
+    if len(item.split()) >= n:
+        for i in range(n):
+            lista.append(item.split()[i])
+    else:
+        for _ in range(n - len(item.split())):
+            lista.append(None)
+
+laudos_lista = ['LAUDOS']
+microcistina_lista = ['Microcistina (μg/L)']
+data_lista = ['Data']
+saxitoxina_lista = ['Saxitoxina (μg/L)']
+cilindrospermopsina_lista = ['Cilindrospermopsina (μg/L)']
+mananciais_lista = ['Manancial']
+coleta_lista = ['Coleta']
+cidade_lista = ['Cidade']
+
+pasta_caminho = "C:\Python\Cagepa\PDFs 2"
+
+for nome_arquivo in os.listdir(pasta_caminho):
+    if nome_arquivo.endswith('.pdf'):
+        caminho_arquivo = os.path.join(pasta_caminho, nome_arquivo)
+        texto = extrair_texto(caminho_arquivo)
+        n = qtd_amostras(texto)
+        inserindo(laudos_lista,laudos(texto),int(n))
+        inserindo(mananciais_lista,extrair_manancial(texto),int(n))
+        inserindo(cidade_lista,cidade(texto),int(n))
+        inserindo(data_lista,data_de_entrada(texto),int(n))
+        extrair_toxinas(texto,coleta_lista)
+        inserindo_con(microcistina_lista,linha1(texto),int(n))
+        inserindo_con(saxitoxina_lista,linha2(texto),int(n))
+        inserindo_con(cilindrospermopsina_lista,linha3(texto),int(n))
+        
+listas = [laudos_lista, mananciais_lista, cidade_lista, data_lista, microcistina_lista, saxitoxina_lista, cilindrospermopsina_lista, coleta_lista]
+
+def printar_excel(filename, *lists):
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    for i,lst in enumerate(lists, start=1):
+        column = i
+        for j,item in enumerate(lst, start=1):
+            sheet.cell(row=j, column=column).value = item
+            
+    workbook.save(filename)
+    print(f'Arquivo excel "{filename}" criado com sucesso.')
+    
+arquivo_final = 'resultado_toxinas.xlsx'
+printar_excel(arquivo_final, *listas)
